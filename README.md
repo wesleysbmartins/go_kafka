@@ -1,7 +1,9 @@
-# Golang Kafka Integration
+# Golang [![My Skills](https://skillicons.dev/icons?i=golang)](https://skillicons.dev) Kafka Integration [![My Skills](https://skillicons.dev/icons?i=kafka)](https://skillicons.dev)
 Este é um exemplo de como uma aplicação Golang pode trabalhar integrada ao Kafka.
 
 ## Kafka
+
+
 Apache Kafka é uma plataforma de streaming de eventos distribuída e altamente escalável, projetada para processar e gerenciar grandes volumes de dados em tempo real. Originalmente desenvolvido pela LinkedIn e posteriormente aberto como um projeto de código aberto pela Apache Software Foundation, o Kafka é amplamente utilizado em diversas indústrias para várias aplicações.
 
 > **OBS:** Para entender melhor o que é o Kafka, como instalar e rodar em seu ambiente, acesse o meu [repositório](https://github.com/wesleysbmartins/kafka) onde registrei meus estudos sobre o tema.
