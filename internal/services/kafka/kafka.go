@@ -2,6 +2,7 @@ package kafka_service
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/IBM/sarama"
 )
@@ -15,35 +16,30 @@ type IKafikaService interface {
 	Connect()
 }
 
-var Producer sarama.SyncProducer
-
-var Consumer sarama.Consumer
+var Client sarama.Client
 
 func (k *KafkaService) Connect() {
-	credentials := KafkaService{
-		host: "localhost",
-		port: "9092",
-	}
+	if Client == nil {
+		credentials := KafkaService{
+			host: "localhost",
+			port: "9092",
+		}
 
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Consumer.Return.Errors = true
+		config := sarama.NewConfig()
+		config.Version = sarama.MaxVersion
+		config.Producer.Return.Successes = true
+		config.Consumer.Return.Errors = true
+		config.Consumer.Offsets.AutoCommit.Enable = true
+		config.Consumer.Offsets.AutoCommit.Interval = 1 * time.Second
 
-	addr := []string{fmt.Sprintf("%s:%s", credentials.host, credentials.port)}
+		broker := []string{fmt.Sprintf("%s:%s", credentials.host, credentials.port)}
 
-	consumer, err := sarama.NewConsumer(addr, config)
+		client, err := sarama.NewClient(broker, config)
 
-	if err != nil {
-		fmt.Println("Cconsumer instance ERROR: ", err)
-	} else {
-		Consumer = consumer
-	}
-
-	producer, err := sarama.NewSyncProducer(addr, config)
-
-	if err != nil {
-		fmt.Println("Producer instance ERROR: ", err)
-	} else {
-		Producer = producer
+		if err != nil {
+			fmt.Println("Client Intance Error!\n", err)
+		} else {
+			Client = client
+		}
 	}
 }

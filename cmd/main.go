@@ -1,23 +1,23 @@
 package main
 
 import (
+	"go_kafka/internal/consumers"
 	"go_kafka/internal/entities"
+	"go_kafka/internal/producers"
 	kafka_service "go_kafka/internal/services/kafka"
-	"go_kafka/internal/services/kafka/operations"
 )
 
 func init() {
-	kafka := kafka_service.KafkaService{}
+	kafka := &kafka_service.KafkaService{}
 	kafka.Connect()
 }
 
-const topic = "activity-topic"
-const key = "user-activity"
-const position = 0
-
 func main() {
+	activityProducer := &producers.ActivityProducer{}
+	// activityConsumer := &consumers.ActivityConsumer{}
+	consumerGroup := &consumers.ConsumerGroup{}
 
-	kafka := operations.KafkaOperations{}
+	consumerGroup.Listen()
 
 	activities := []entities.Activity{
 		{
@@ -37,9 +37,8 @@ func main() {
 	}
 
 	for _, activity := range activities {
-		kafka.Send(topic, key, activity)
+		activityProducer.Send(activity)
 	}
 
-	kafka.Listen(topic, position)
-
+	// activityConsumer.Listen()
 }
