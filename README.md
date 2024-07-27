@@ -8,101 +8,111 @@ Apache Kafka é uma plataforma de streaming de eventos distribuída e altamente 
 
 > **OBS:** Para entender melhor o que é o Kafka, como instalar e rodar em seu ambiente, acesse o meu [repositório](https://github.com/wesleysbmartins/kafka) onde registrei meus estudos sobre o tema.
 
-## Implementação
-Para utilizar o Kafka em uma aplicação Go é necessário usar bibliotecas como o [Sarama](https://pkg.go.dev/github.com/IBM/sarama). Existem outras abordagens para utilizar mas, eu estou usando esta.
+## Hands-On
+Neste momento iremos abordar de forma simples como integra o Kafka a sua aplicação Golang usando a biblioteca [Sarama](https://pkg.go.dev/github.com/IBM/sarama), utilizando padrões de desenvolvimento como **Singleton**, **Factory**, **Entities** e **Usecases**.
 
 Após iniciar sua aplicação Go e instalar a biblioteca do Sarama, você pode criar sua conexão, criando seu Producer ou seu Consumer.
 
-Utilizei abordagens de padrões de projeto como **Singleton**, que será útil economizando recursos e melhorando a performance da aplicação e da comunicação com o Kafka.
+### Client Kafka
+Após inicar sua aplicação podemos iniciar o desenvolvimento da aplicação, neste primeiro momento vamos criar o client do Kafka para sua aplicação e instancia-lo utilizando um Singleton.
 
-### Producer
-Entidades que publicam dados (mensagens) em tópicos do Kafka.
 ```go
 package kafka
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/IBM/sarama"
 )
 
-// singleton
-var Producer sarama.SyncProducer
+type Kafka struct {
+	host string
+	port string
+}
 
-func Connect() {
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
+type IKafka interface {
+	Connect()
+}
 
-    // credenciais como host e porta onde seu kafka esta disponível
-	addr := []string{fmt.Sprintf("%s:%s", "localhost", "9092")}
+var Client sarama.Client
 
-	producer, err := sarama.NewSyncProducer(addr, config)
+func (k *Kafka) Connect() {
+	if Client == nil {
+		credentials := Kafka{
+			host: "localhost",
+			port: "9092",
+		}
 
-	if err != nil {
-		fmt.Println("Producer instance ERROR: ", err)
-	} else {
-		Producer = producer
+		config := sarama.NewConfig()
+		config.Version = sarama.MaxVersion
+		config.Producer.Return.Successes = true
+		config.Consumer.Return.Errors = true
+		config.Consumer.Offsets.AutoCommit.Enable = true
+		config.Consumer.Offsets.AutoCommit.Interval = 1 * time.Second
+
+		broker := []string{fmt.Sprintf("%s:%s", credentials.host, credentials.port)}
+
+		client, err := sarama.NewClient(broker, config)
+
+		if err != nil {
+			fmt.Println("Client Intance Error!\n", err)
+		} else {
+			Client = client
+		}
 	}
 }
 ```
 
-### Consumer
-Entidades que lêem e processam dados de tópicos do Kafka.
+### Factory Kafka
+Para a criação dos Producers e Consumers do Kafka vamos utilizar a abordagem de Factory.
+
+### Producer Factory
+Para o factory dos producers retemos os métodos de criação do producer e o de envio de mensagens, onde esperam os parametros necessários para realizar tais operações como tópico, chave da mensagem e valor da mensagem.
 ```go
-package kafka
-
-import (
-	"fmt"
-
-	"github.com/IBM/sarama"
-)
-
-var Consumer sarama.Consumer
-
-func Connect() {
-	config := sarama.NewConfig()
-	config.Consumer.Return.Errors = true
-
-	addr := []string{fmt.Sprintf("%s:%s", "localhost", "9092")}
-
-	consumer, err := sarama.NewConsumer(addr, config)
-
-	if err != nil {
-		fmt.Println("Cconsumer instance ERROR: ", err)
-	} else {
-		Consumer = consumer
-	}
-}
-```
-
-### Operations
-Implementação de funções para enviar e ler mensagens dos tópicos Kafka.
-### Send
-Função Send que espera parametros como o tópico a ser enviado mensagens, a chave e o valor da mensagem.
-a mensagem pode ser uma struct.
-```go
-package operations
+package factory
 
 import (
 	"encoding/json"
 	"fmt"
-	kafka "go_kafka/internal/services/kafka"
-	"os"
+	"go_kafka/internal/adapters/kafka"
 
 	"github.com/IBM/sarama"
 )
 
-func Send(topic string, key string, message interface{}) error {
+type ProducerFactory struct {
+	key      string
+	topic    string
+	instance sarama.SyncProducer
+}
 
+type IProducerFactory interface {
+	Create(key string, topic string)
+	SendMessage(message string) error
+}
+
+func (p *ProducerFactory) Create(key string, topic string) {
+	p.key = key
+	p.topic = topic
+	producer, err := sarama.NewSyncProducerFromClient(kafka.Client)
+
+	if err != nil {
+		panic("Error to create new Producer!")
+	} else {
+		p.instance = producer
+	}
+}
+
+func (p *ProducerFactory) Send(message interface{}) error {
 	value, _ := json.Marshal(message)
 
 	msg := &sarama.ProducerMessage{
-		Topic: topic,
-		Key:   sarama.StringEncoder(key),
+		Topic: p.topic,
+		Key:   sarama.StringEncoder(p.key),
 		Value: sarama.StringEncoder(value),
 	}
 
-	_, _, err := kafka.Producer.SendMessage(msg)
+	_, _, err := p.instance.SendMessage(msg)
 
 	if err != nil {
 		fmt.Println("Send message ERROR: ", err)
@@ -114,34 +124,79 @@ func Send(topic string, key string, message interface{}) error {
 }
 ```
 
-### Listen
-Função Listen que espera como parametro o nome e número/posição do tópico em que deverá ler as mensagens.
+### Consumers
+Temos dois tipos de implementações de consumers, um consumer de um único tópico e os consumers de grupos de tópicos.
+
+Além disse foi criado interfaces de handlers para lidarem com as mensagens recebidas, o que representaria sua regra de negócio.
+
+### Consumer Handlers Interfaces
 ```go
-package operations
+package factory
+
+import "github.com/IBM/sarama"
+
+type IConsumerHandler interface {
+	Run(message sarama.ConsumerMessage)
+}
+
+type IConsumerGroupHandler interface {
+	Setup(session sarama.ConsumerGroupSession) error
+	Cleanup(session sarama.ConsumerGroupSession) error
+	ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error
+}
+```
+
+### Consumer Factory
+```go
+package factory
 
 import (
 	"fmt"
-	kafka "go_kafka/internal/services/kafka"
+	"go_kafka/internal/adapters/kafka"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/IBM/sarama"
 )
 
-func Listen(topic string, partitionNumber int32) {
+type ConsumerFactory struct {
+	topic     string
+	partition int32
+	instance  sarama.Consumer
+}
 
-	consumer, err := kafka.Consumer.ConsumePartition(topic, partitionNumber, sarama.OffsetOldest)
+type IConsumerFactory interface {
+	Create(topic string, partition int32)
+	Listen() error
+}
+
+func (c *ConsumerFactory) Create(topic string, partition int32) {
+	c.topic = topic
+	c.partition = partition
+	consumer, err := sarama.NewConsumerFromClient(kafka.Client)
+
+	if err != nil {
+		panic("Error to create new Consumer!")
+	} else {
+		c.instance = consumer
+	}
+}
+
+func (c *ConsumerFactory) Listen(handler IConsumerHandler) {
+	consumerPartition, err := c.instance.ConsumePartition(c.topic, c.partition, sarama.OffsetOldest)
 
 	if err != nil {
 		fmt.Println("Consumer ERROR: ", err)
 	}
 
-	defer consumer.Close()
+	defer consumerPartition.Close()
 
-	ch := make(chan os.Signal)
+	ch := make(chan os.Signal, 1)
 
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	messages := consumer.Messages()
+	messages := consumerPartition.Messages()
 
 	for {
 		select {
@@ -149,14 +204,81 @@ func Listen(topic string, partitionNumber int32) {
 			fmt.Printf("Reveived message SIGNALL: %v\n", msg)
 			return
 		case msg := <-messages:
-			fmt.Printf("Received message - Topic: %s - Value: %s\n", msg.Topic, msg.Value)
+			handler.Run(*msg)
 		}
 	}
 }
 ```
 
-### Entidade
-A entidade de exemplo que representa as mensagens a serem enviadas e lidas.
+### Consumer Group Factory
+```go
+package factory
+
+import (
+	"context"
+	"fmt"
+	"go_kafka/internal/adapters/kafka"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/IBM/sarama"
+)
+
+type ConsumerGroupFactory struct {
+	groupId  string
+	topics   []string
+	instance sarama.ConsumerGroup
+}
+
+type IConsumerGroupfactory interface {
+	Create(groupId string, topics []string)
+	Listen(handler IConsumerGroupHandler)
+}
+
+func (c *ConsumerGroupFactory) Create(groupId string, topics []string) {
+	c.groupId = groupId
+	c.topics = topics
+	consumerGroup, err := sarama.NewConsumerGroupFromClient(groupId, kafka.Client)
+	if err != nil {
+		panic("Error to create Consumer Group!")
+	} else {
+		c.instance = consumerGroup
+	}
+}
+
+func (c *ConsumerGroupFactory) Listen(handler IConsumerGroupHandler) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+
+			if err := c.instance.Consume(ctx, c.topics, handler); err != nil {
+				panic(fmt.Sprintf("Consumer Group Error!\n%s", err.Error()))
+			}
+
+			if ctx.Err() != nil {
+				return
+			}
+		}
+	}()
+
+	ch := make(chan os.Signal, 1)
+
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	select {
+	case <-ctx.Done():
+		fmt.Println("Context Cancelled!")
+	case signal := <-ch:
+		fmt.Printf("Signal Event: %v\n", signal)
+	}
+}
+```
+
+## Entities
+Para exemplificar uma mensagem foi criado uma struct **Activity**.
 ```go
 package entities
 
@@ -167,26 +289,95 @@ type Activity struct {
 }
 ```
 
+### Usecases
+Structs e métodos responsáveis por implementar as interfaces esperadas pelos consumers como handler e também, sua regra de negócio.
+
+### Consumer Usecase
+```go
+package usecases
+
+import (
+	"fmt"
+
+	"github.com/IBM/sarama"
+)
+
+type ConsumerUsecase struct{}
+
+func (c *ConsumerUsecase) Run(message sarama.ConsumerMessage) {
+	fmt.Printf("Consumer Usecase Received Message - Topic: %q - Value: %s\n", message.Topic, message.Value)
+}
+```
+
+### Consumer Group Usecase
+```go
+package usecases
+
+import (
+	"fmt"
+
+	"github.com/IBM/sarama"
+)
+
+type ConsumerGroupUsecase struct{}
+
+func (ConsumerGroupUsecase) Setup(_ sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+func (ConsumerGroupUsecase) Cleanup(_ sarama.ConsumerGroupSession) error {
+	return nil
+}
+
+func (h ConsumerGroupUsecase) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+
+		fmt.Printf("Consumer Group Usecase Received Message - Topic: %q - Value: %s\n", msg.Topic, msg.Value)
+
+		session.MarkMessage(msg, "Readed")
+	}
+
+	return nil
+}
+```
 ### Main
-Utilizando código implementado.
+Sendo assim, basta brincar com o código desenvolvido até aqui, use isto no seu main, execute e veja a mágica acontecer:
 ```go
 package main
 
 import (
+	"go_kafka/internal/adapters/kafka"
+	factory_consumer "go_kafka/internal/adapters/kafka/factory/consumer"
+	factory_producer "go_kafka/internal/adapters/kafka/factory/producer"
 	"go_kafka/internal/entities"
-	kafka "go_kafka/internal/services/kafka"
-	"go_kafka/internal/services/kafka/operations"
+	"go_kafka/internal/usecases"
 )
 
 func init() {
-	kafka.Connect()
+	kafka_client := &kafka.Kafka{}
+	kafka_client.Connect()
 }
 
-const topic = "activity-topic"
-const key = "user-activity"
-const position = 0
+const (
+	partition = 0
+	groupId   = "activity-group"
+	topic     = "activity-topic"
+	key       = "activity"
+)
 
 func main() {
+	activityProducer := &factory_producer.ProducerFactory{}
+	activityProducer.Create(key, topic)
+
+	// activityConsumer := &factory_consumer.ConsumerFactory{}
+	// activityConsumer.Create(topic, partition)
+
+	consumerGroup := &factory_consumer.ConsumerGroupFactory{}
+	consumerGroup.Create(groupId, []string{topic})
+
+	consumerGrouphandler := &usecases.ConsumerGroupUsecase{}
+
+	consumerGroup.Listen(consumerGrouphandler)
 
 	activities := []entities.Activity{
 		{
@@ -206,23 +397,28 @@ func main() {
 	}
 
 	for _, activity := range activities {
-		operation.Send(topic, key, activity)
+		activityProducer.Send(activity)
 	}
 
-	operations.Listen(topic, position)
+	// consumerUsecase := &usecases.ConsumerUsecase{}
 
+	// activityConsumer.Listen(consumerUsecase)
 }
 ```
 
 ### Resultado
-Executando o main, você deve obter o seguinte resultado:
+Executando o projeto, você deve obter um resultado semelhante a este:
 ```shell
+Consumer Group Usecase Received Message - Topic: "activity-topic" - Value: {"id":"1","title":"Example 01","description":"KAFKA IMPLEMENTATION DESCRIPTION 01"}
+Consumer Group Usecase Received Message - Topic: "activity-topic" - Value: {"id":"2","title":"Example 02","description":"KAFKA IMPLEMENTATION DESCRIPTION 02"}
+Consumer Group Usecase Received Message - Topic: "activity-topic" - Value: {"id":"3","title":"Example 03","description":"KAFKA IMPLEMENTATION DESCRIPTION 03"}
+Consumer Group Usecase Received Message - Topic: "activity-topic" - Value: {"id":"1","title":"Example 01","description":"KAFKA IMPLEMENTATION DESCRIPTION 01"}
+Consumer Group Usecase Received Message - Topic: "activity-topic" - Value: {"id":"2","title":"Example 02","description":"KAFKA IMPLEMENTATION DESCRIPTION 02"}
+Consumer Group Usecase Received Message - Topic: "activity-topic" - Value: {"id":"3","title":"Example 03","description":"KAFKA IMPLEMENTATION DESCRIPTION 03"}
+Signal Event: interrupt
 Send message SUCCESS!
 Send message SUCCESS!
 Send message SUCCESS!
-Received message - Topic: activity-topic - Value: {"id":"1","title":"Example 01","description":"KAFKA IMPLEMENTATION DESCRIPTION 01"}
-Received message - Topic: activity-topic - Value: {"id":"2","title":"Example 02","description":"KAFKA IMPLEMENTATION DESCRIPTION 02"}
-Received message - Topic: activity-topic - Value: {"id":"3","title":"Example 03","description":"KAFKA IMPLEMENTATION DESCRIPTION 03"}
 ```
 
 Para parar a aplicação basta pressionar **CTRL + C** em seu terminal:

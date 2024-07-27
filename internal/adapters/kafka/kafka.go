@@ -12,7 +12,7 @@ type Kafka struct {
 	port string
 }
 
-type IKafika interface {
+type IKafka interface {
 	Connect()
 }
 

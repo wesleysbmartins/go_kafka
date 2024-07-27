@@ -1,23 +1,38 @@
 package main
 
 import (
-	"go_kafka/internal/consumers"
+	"go_kafka/internal/adapters/kafka"
+	factory_consumer "go_kafka/internal/adapters/kafka/factory/consumer"
+	factory_producer "go_kafka/internal/adapters/kafka/factory/producer"
 	"go_kafka/internal/entities"
-	"go_kafka/internal/producers"
-	kafka_service "go_kafka/internal/services/kafka"
+	"go_kafka/internal/usecases"
 )
 
 func init() {
-	kafka := &kafka_service.KafkaService{}
-	kafka.Connect()
+	kafka_client := &kafka.Kafka{}
+	kafka_client.Connect()
 }
 
-func main() {
-	activityProducer := &producers.ActivityProducer{}
-	// activityConsumer := &consumers.ActivityConsumer{}
-	consumerGroup := &consumers.ConsumerGroup{}
+const (
+	partition = 0
+	groupId   = "activity-group"
+	topic     = "activity-topic"
+	key       = "activity"
+)
 
-	consumerGroup.Listen()
+func main() {
+	activityProducer := &factory_producer.ProducerFactory{}
+	activityProducer.Create(key, topic)
+
+	// activityConsumer := &factory_consumer.ConsumerFactory{}
+	// activityConsumer.Create(topic, partition)
+
+	consumerGroup := &factory_consumer.ConsumerGroupFactory{}
+	consumerGroup.Create(groupId, []string{topic})
+
+	consumerGrouphandler := &usecases.ConsumerGroupUsecase{}
+
+	consumerGroup.Listen(consumerGrouphandler)
 
 	activities := []entities.Activity{
 		{
@@ -40,5 +55,7 @@ func main() {
 		activityProducer.Send(activity)
 	}
 
-	// activityConsumer.Listen()
+	// consumerUsecase := &usecases.ConsumerUsecase{}
+
+	// activityConsumer.Listen(consumerUsecase)
 }
