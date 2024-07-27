@@ -2,7 +2,7 @@ package consumers
 
 import (
 	"fmt"
-	"go_kafka/internal/services/kafka/operations"
+	"go_kafka/internal/adapters/kafka/factory"
 	"go_kafka/internal/topics"
 	"os"
 	"os/signal"
@@ -29,8 +29,8 @@ func (c *ActivityConsumer) create() error {
 	var err error
 
 	if consumer == nil {
-		operations := &operations.KafkaOperations{}
-		consumer, err = operations.CreateConsumer()
+		factory := &factory.KafkaFactory{}
+		consumer, err = factory.CreateConsumer()
 		if err != nil {
 			fmt.Println("Create Consumer to Activity Error!\n", err)
 		}

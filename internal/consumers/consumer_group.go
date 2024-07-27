@@ -3,8 +3,8 @@ package consumers
 import (
 	"context"
 	"fmt"
+	"go_kafka/internal/adapters/kafka/factory"
 	"go_kafka/internal/consumers/handlers"
-	"go_kafka/internal/services/kafka/operations"
 	"go_kafka/internal/topics"
 	"os"
 	"os/signal"
@@ -30,8 +30,8 @@ func (c *ConsumerGroup) create() error {
 	var err error
 
 	if err == nil {
-		operations := &operations.KafkaOperations{}
-		consumerGroup, err = operations.CreateConsumerGroup(groupId)
+		factory := &factory.KafkaFactory{}
+		consumerGroup, err = factory.CreateConsumerGroup(groupId)
 		if err != nil {
 			fmt.Println("Create Consumer Group Error!\n", err)
 		}

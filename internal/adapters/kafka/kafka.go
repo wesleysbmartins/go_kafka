@@ -1,4 +1,4 @@
-package kafka_service
+package kafka
 
 import (
 	"fmt"
@@ -7,20 +7,20 @@ import (
 	"github.com/IBM/sarama"
 )
 
-type KafkaService struct {
+type Kafka struct {
 	host string
 	port string
 }
 
-type IKafikaService interface {
+type IKafika interface {
 	Connect()
 }
 
 var Client sarama.Client
 
-func (k *KafkaService) Connect() {
+func (k *Kafka) Connect() {
 	if Client == nil {
-		credentials := KafkaService{
+		credentials := Kafka{
 			host: "localhost",
 			port: "9092",
 		}

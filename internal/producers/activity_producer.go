@@ -3,8 +3,8 @@ package producers
 import (
 	"encoding/json"
 	"fmt"
+	"go_kafka/internal/adapters/kafka/factory"
 	"go_kafka/internal/entities"
-	"go_kafka/internal/services/kafka/operations"
 	"go_kafka/internal/topics"
 
 	"github.com/IBM/sarama"
@@ -27,8 +27,8 @@ const (
 func (p *ActivityProducer) create() error {
 	var err error
 	if producer == nil {
-		operations := operations.KafkaOperations{}
-		producer, err = operations.CreateProducer()
+		factory := factory.KafkaFactory{}
+		producer, err = factory.CreateProducer()
 
 		if err != nil {
 			fmt.Println("Create Producer to Activity Error!\n", err)
